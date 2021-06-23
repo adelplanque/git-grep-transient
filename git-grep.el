@@ -34,11 +34,14 @@
 ;;; Code:
 
 (require 'magit)
+(require 'compile)
+(require 'symbol-overlay)
 
-(defun git-grep-mode-get-buffer (filename &optional rev)
-  (if (not rev)
-      (find-file filename)
-    (magit-find-file rev filename)))
+(defvar git-grep-values-alist nil
+  "alist of parameters by git repository")
+
+(defvar git-grep-hit-face compilation-info-face
+  "Face name to use for grep hits.")
 
 (define-compilation-mode git-grep-mode "Git-Grep"
   "Git-Grep search results."
@@ -50,7 +53,7 @@
                 compilation-error-regexp-alist (list smbl)
                 compilation-error-regexp-alist-alist (list (cons smbl pttrn))
                 compilation-process-setup-function 'git-grep-mode-setup
-                compilation-error-face grep-hit-face)))
+                compilation-error-face git-grep-hit-face)))
 
 (defun git-grep-mode-setup ()
   "Setup compilation variables and buffer for `git-grep'.
@@ -65,8 +68,6 @@ Set up `compilation-exit-message-function'."
                    (t
                     (cons msg code)))
            (cons msg code)))))
-
-(defun git-grep-buffer-name (mode) "Git-Grep")
 
 (defun git-grep-compilation-find-file (orig-fun marker filename directory &rest formats)
   "Wraps `compilation-find-file' to open file with magit when revision is present"
@@ -83,11 +84,11 @@ Set up `compilation-exit-message-function'."
 
 (defun git-grep-run (pattern rev directory)
   "Internal function, run git-grep."
-  (let (
-        ;; (compilation-buffer-name-function 'git-grep-buffer-name)
-        (default-directory directory)
-        (cmd (list "git" "--no-pager" "grep" "-n" "--column" pattern rev)))
-    (compilation-start (mapconcat 'identity cmd " ") 'git-grep-mode)))
+  (let* ((default-directory directory)
+         (cmd (list "git" "--no-pager" "grep" "-n" "--column" pattern rev))
+         (buf (compilation-start (mapconcat 'identity cmd " ") 'git-grep-mode)))
+    (with-current-buffer buf (progn (symbol-overlay-remove-all)
+                                    (symbol-overlay-put-all pattern nil)))))
 
 (defun git-grep-default-for-read ()
   (unless (git-grep-use-region-p)
@@ -98,32 +99,112 @@ Set up `compilation-exit-message-function'."
       (and transient-mark-mode mark-active
            (> (region-end) (region-beginning)))))
 
-(defun git-grep-read-pattern ()
-  (let ((default (git-grep-default-for-read)))
-    (let ((prompt (if default (format "Search (%s): " default) "Search: ")))
-      (let ((pattern (read-string prompt nil)))
-        (if (string= "" pattern) default pattern)))))
+(defclass git-grep-values ()
+  ((directory :initarg :directory :initform nil)
+   (revision :initarg :revision :initform nil)
+   (expression :initarg :expression :initform nil)))
 
-(defun git-grep-read-rev ()
+(defclass git-grep-variable (transient-variable)
+  ((unset-value :initarg :unset-value :initform "unset")))
+
+(cl-defmethod transient-init-value ((obj git-grep-variable))
+  (let ((values (oref transient--prefix value))
+        (var-name (oref obj variable)))
+    (oset obj value (eieio-oref values var-name))))
+
+(cl-defmethod transient-format-value ((obj git-grep-variable))
+  (let ((value (oref obj value)))
+    (if value
+        (propertize value 'face 'transient-value)
+      (propertize (oref obj unset-value) 'face 'transient-inactive-value))))
+
+(cl-defmethod transient-infix-set ((obj git-grep-variable) value)
+  (oset obj value value)
+  (let ((values (oref transient--prefix value))
+        (var-name (oref obj variable)))
+    (eieio-oset values var-name value)))
+
+(cl-defmethod transient-infix-value ((obj transient-variable))
+  `(,(oref obj variable) . ,(oref obj value)))
+
+(defun git-grep-init-value (obj)
+  (let ((toplevel (magit-toplevel)))
+    (if (not toplevel) (error "Not in a git repository"))
+    (if (not (assoc toplevel git-grep-values-alist))
+        (let* ((values (git-grep-values :directory toplevel)))
+          (push `(,toplevel . ,values) git-grep-values-alist)))
+    (let ((values (cdr (assoc toplevel git-grep-values-alist)))
+          (default (git-grep-default-for-read)))
+      (if default (oset values expression default))
+      (oset obj value values))))
+
+(defun git-grep-read-expression (prompt initial-input history)
+  (let* ((default (git-grep-default-for-read))
+         (prompt (if default (format "Search (%s): " default) "Search: "))
+         (pattern (read-string prompt nil)))
+    (if (string= "" pattern) default pattern)))
+
+(defun git-grep-read-directory (prompt initial-input history)
+  (let ((directory (read-directory-name "Root directory: "))
+        (toplevel (magit-toplevel)))
+    (if (string-prefix-p ".." (file-relative-name directory toplevel)) toplevel directory)))
+
+(defun git-grep-read-revision (prompt initial-input history)
   (let ((pseudo-revs '("{worktree}" "{index}")))
-    (magit-completing-read "Find file from revision"
+    (magit-completing-read "Search in revision: "
                            (append pseudo-revs
                                    (magit-list-refnames nil t))
-                           nil nil nil 'magit-revision-history
+                           nil nil nil 'history
                            (or (magit-branch-or-commit-at-point)
                                (magit-get-current-branch)))))
+
+(transient-define-infix git-grep-expr-infix ()
+  :description "Search expression"
+  :class 'git-grep-variable
+  :key "e"
+  :variable 'expression
+  :reader 'git-grep-read-expression
+  :always-read t
+  )
+
+(transient-define-infix git-grep-directory-infix ()
+  :description "Search in directory"
+  :class 'git-grep-variable
+  :key "d"
+  :variable 'directory
+  :reader 'git-grep-read-directory
+  :always-read t
+  )
+
+(transient-define-infix git-grep-revision-infix ()
+  :description "Search in revision"
+  :class 'git-grep-variable
+  :key "r"
+  :variable 'revision
+  :reader 'git-grep-read-revision
+  :unset-value "worktree"
+  )
+
+(defun git-grep-run-transient (&rest args)
+  (interactive (transient-args 'git-grep))
+  (let-alist args
+    (if (not .expression)
+        (message "Nothing to search")
+      (git-grep-run .expression .revision .directory))))
 
 ;;; Public interface ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;;;###autoload
-(defun git-grep (pattern rev directory)
-  "Run git-grep"
-  (interactive
-   (let ((directory (let ((toplevel (magit-toplevel)))
-                      (if (not toplevel) (error "Not in a git repository") toplevel)))
-         (pattern (git-grep-read-pattern))
-         (rev (git-grep-read-rev)))
-     (list pattern rev directory)))
-  (git-grep-run pattern rev directory))
+(transient-define-prefix git-grep ()
+  "Git-Grep"
+  :info-manual "Search text with git-grep"
+  :init-value 'git-grep-init-value
+  ["Arguments"
+   (git-grep-expr-infix)
+   (git-grep-directory-infix)
+   (git-grep-revision-infix)]
+  ["Commands"
+   ("c" "run"     git-grep-run-transient)
+   ("q" "Quit"    transient-quit-one)])
 
 (provide 'git-grep)
