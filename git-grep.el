@@ -43,6 +43,11 @@
 (defvar git-grep-hit-face compilation-info-face
   "Face name to use for grep hits.")
 
+(defconst git-grep-mode-filename-alist
+  '((python-mode . "*.py")
+    (emacs-lisp-mode . "*.el")
+    ))
+
 (define-compilation-mode git-grep-mode "Git-Grep"
   "Git-Grep search results."
   (let ((smbl 'git-grep)
@@ -82,14 +87,6 @@ Set up `compilation-exit-message-function'."
 
 (advice-add 'compilation-find-file :around #'git-grep-compilation-find-file)
 
-(defun git-grep-run (pattern rev directory)
-  "Internal function, run git-grep."
-  (let* ((default-directory directory)
-         (cmd (list "git" "--no-pager" "grep" "-n" "--column" pattern rev))
-         (buf (compilation-start (mapconcat 'identity cmd " ") 'git-grep-mode)))
-    (with-current-buffer buf (progn (symbol-overlay-remove-all)
-                                    (symbol-overlay-put-all pattern nil)))))
-
 (defun git-grep-default-for-read ()
   (unless (git-grep-use-region-p)
     (thing-at-point 'symbol)))
@@ -101,6 +98,7 @@ Set up `compilation-exit-message-function'."
 
 (defclass git-grep-values ()
   ((directory :initarg :directory :initform nil)
+   (filename :initarg :filename :initform nil)
    (revision :initarg :revision :initform nil)
    (expression :initarg :expression :initform nil)))
 
@@ -136,6 +134,11 @@ Set up `compilation-exit-message-function'."
     (let ((values (cdr (assoc toplevel git-grep-values-alist)))
           (default (git-grep-default-for-read)))
       (if default (oset values expression default))
+      (if (not (oref values filename))
+          (oset values filename
+                (cdr (assoc (with-current-buffer (or (buffer-base-buffer)
+                                                     (current-buffer)) major-mode)
+                            git-grep-mode-filename-alist))))
       (oset obj value values))))
 
 (defun git-grep-read-expression (prompt initial-input history)
@@ -149,6 +152,13 @@ Set up `compilation-exit-message-function'."
         (toplevel (magit-toplevel)))
     (if (string-prefix-p ".." (file-relative-name directory toplevel)) toplevel directory)))
 
+(defun git-grep-read-filename (prompt initial-input history)
+  (let* ((mode (with-current-buffer (or (buffer-base-buffer) (current-buffer)) major-mode))
+         (default (cdr (assoc mode git-grep-mode-filename-alist)))
+         (prompt (if default (format "Filename pattern (%s): " default) "Filename pattern: "))
+         (pattern (read-from-minibuffer prompt)))
+    (if (string= "" pattern) default pattern)))
+
 (defun git-grep-read-revision (prompt initial-input history)
   (let ((pseudo-revs '("{worktree}" "{index}")))
     (magit-completing-read "Search in revision: "
@@ -158,7 +168,7 @@ Set up `compilation-exit-message-function'."
                            (or (magit-branch-or-commit-at-point)
                                (magit-get-current-branch)))))
 
-(transient-define-infix git-grep-expr-infix ()
+(transient-define-infix git-grep-expression-infix ()
   :description "Search expression"
   :class 'git-grep-variable
   :key "e"
@@ -176,6 +186,14 @@ Set up `compilation-exit-message-function'."
   :always-read t
   )
 
+(transient-define-infix git-grep-filename-infix ()
+  :description "Search in files"
+  :class 'git-grep-variable
+  :key "f"
+  :variable 'filename
+  :reader 'git-grep-read-filename
+  )
+
 (transient-define-infix git-grep-revision-infix ()
   :description "Search in revision"
   :class 'git-grep-variable
@@ -188,9 +206,15 @@ Set up `compilation-exit-message-function'."
 (defun git-grep-run-transient (&rest args)
   (interactive (transient-args 'git-grep))
   (let-alist args
-    (if (not .expression)
-        (message "Nothing to search")
-      (git-grep-run .expression .revision .directory))))
+    (if (not .expression) (message "Nothing to search")
+      (let* ((default-directory .directory)
+             (cmd (append (list "git" "--no-pager" "grep" "-n" "--column"
+                                .expression .revision)
+                          (if .filename (list "--" (shell-quote-argument .filename)))))
+             (buf (compilation-start (mapconcat 'identity cmd " ") 'git-grep-mode)))
+        (with-current-buffer buf (progn (symbol-overlay-remove-all)
+                                        (symbol-overlay-put-all .expression nil)))))))
+
 
 ;;; Public interface ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -200,8 +224,9 @@ Set up `compilation-exit-message-function'."
   :info-manual "Search text with git-grep"
   :init-value 'git-grep-init-value
   ["Arguments"
-   (git-grep-expr-infix)
+   (git-grep-expression-infix)
    (git-grep-directory-infix)
+   (git-grep-filename-infix)
    (git-grep-revision-infix)]
   ["Commands"
    ("c" "run"     git-grep-run-transient)
