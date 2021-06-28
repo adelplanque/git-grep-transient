@@ -53,12 +53,13 @@
   (let ((smbl 'git-grep)
         (pttrn '("^\\(\\(?:[^:\n]+?:\\)?[^:\n]+?\\):\\([0-9]+\\):\\([0-9]+\\):"
                  1 2 3)))
-    (setq-local truncate-lines t
-                compilation-disable-input t
-                compilation-error-regexp-alist (list smbl)
-                compilation-error-regexp-alist-alist (list (cons smbl pttrn))
-                compilation-process-setup-function 'git-grep-mode-setup
-                compilation-error-face git-grep-hit-face)))
+    ;; setq-local non variadic before emacs 27
+    (setq-local truncate-lines t)
+    (setq-local compilation-disable-input t)
+    (setq-local compilation-error-regexp-alist (list smbl))
+    (setq-local compilation-error-regexp-alist-alist (list (cons smbl pttrn)))
+    (setq-local compilation-process-setup-function 'git-grep-mode-setup)
+    (setq-local compilation-error-face git-grep-hit-face)))
 
 (defun git-grep-mode-setup ()
   "Setup compilation variables and buffer for `git-grep'.
