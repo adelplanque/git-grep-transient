@@ -60,7 +60,6 @@
   (let ((smbl 'git-grep)
         (pttrn '("^\\(\\(?:[^:\n]+?:\\)?[^:\n]+?\\):\\([0-9]+\\):\\([0-9]+\\):"
                  1 2 3)))
-    ;; setq-local non variadic before emacs 27
     (setq-local truncate-lines t)
     (setq-local compilation-disable-input t)
     (setq-local compilation-error-regexp-alist (list smbl))
@@ -150,7 +149,6 @@ repository."
 (defun git-grep-init-value (obj)
   "Initialize the parameters to apply to the git grep command.
 OBJ is a `transient-prefix' object that needs to be initialized."
-  (message "obj: %s" obj)
   (let ((toplevel (magit-toplevel)))
     (if (not toplevel) (user-error "Not in a git repository"))
     (if (not (assoc toplevel git-grep-values-alist))
