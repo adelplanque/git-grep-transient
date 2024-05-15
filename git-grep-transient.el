@@ -244,7 +244,7 @@ ARGS are arguments provided by `git-grep-transient'."
           (setq symbol-overlay-keywords-alist nil)
           (symbol-overlay-put-all .expression nil))))))
 
-;;;###autoload
+;;;###autoload (autoload 'git-grep-transient "git-grep-transient" nil t)
 (transient-define-prefix git-grep-transient ()
   "Search text with git grep command."
   :info-manual "Search text with git-grep-transient"
