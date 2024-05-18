@@ -6,7 +6,7 @@
 ;; Author: Alain Delplanque <alaindelplanque@mailoo.org>
 ;; URL: https://github.com/adelplanque/git-grep-transient
 ;; Keywords: git tools vc
-;; Version: 0.1
+;; Version: 0.1.0
 ;; Package-Requires: ((emacs "27.1") (magit "3.3.0") (transient "0.6.0") (symbol-overlay "4.2"))
 
 ;; This file is NOT part of GNU Emacs.
