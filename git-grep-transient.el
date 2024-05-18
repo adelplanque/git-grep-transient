@@ -120,7 +120,7 @@ This value is based on the position in the buffer."
 
 (defclass git-grep-transient--variable (transient-variable)
   ((unset-value :initarg :unset-value :initform "unset"))
-  "Subclass of `transient-variable' that manages history.")
+  "Subclass of function `transient-variable' that manages history.")
 
 (cl-defmethod transient-init-value ((obj git-grep-transient--variable))
   "Overriding the `transient-init-value' method.
@@ -131,13 +131,14 @@ repository."
     (oset obj value (eieio-oref values var-name))))
 
 (cl-defmethod transient-format-value ((obj git-grep-transient--variable))
-  "Overriding the `transient-format-value' method for object OBJ."
+  "Return the propertized vulue string for `git-grep-transient--variable' OBJ."
   (let ((value (oref obj value)))
     (if value
         (propertize value 'face 'transient-value)
       (propertize (oref obj unset-value) 'face 'transient-inactive-value))))
 
 (cl-defmethod transient-infix-set ((obj git-grep-transient--variable) value)
+  "Set VALUE for `git-grep-transient--variable' OBJ."
   (oset obj value value)
   (let ((values (oref transient--prefix value))
         (var-name (oref obj variable)))
@@ -148,8 +149,7 @@ repository."
   `(,(oref obj variable) . ,(oref obj value)))
 
 (defun git-grep-transient--init-value (obj)
-  "Initialize the parameters to apply to the git grep command.
-OBJ is a `transient-prefix' object that needs to be initialized."
+  "Initialize value for `git-grep-transient--variable' OBJ."
   (let ((toplevel (magit-toplevel)))
     (if (not toplevel) (user-error "Not in a git repository"))
     (if (not (assoc toplevel git-grep-transient--values-alist))
