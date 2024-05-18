@@ -1,20 +1,16 @@
-git-grep.el
-===========
+git-grep-transient.el
+=====================
 
-`git-grep.el` is a binding of `git-grep` command into emacs.
+Search pattern in project using [`git-grep`](https://git-scm.com/docs/git-grep).
 
-* Invoke with `git-grep` command
+* Invoke with `M-x git-grep-transient` command
 
   ![invoke](doc/invoke.png)
 
-* And run
+* You can choose an old revision
 
-  ![list](doc/list.png)
+  ![list](doc/invoke-revision.png)
 
-* Or choose an old revision
+* Press Enter to open the file at the chosen revision
 
-  ![old-rev](doc/old-rev.png)
-
-* And view at it was in that old revision
-
-  ![file-at-rev](doc/file-at-rev.png)
+  ![old-rev](doc/open.png)
