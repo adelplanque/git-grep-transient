@@ -64,7 +64,7 @@
     (setq-local compilation-disable-input t)
     (setq-local compilation-error-regexp-alist (list smbl))
     (setq-local compilation-error-regexp-alist-alist (list (cons smbl pttrn)))
-    (setq-local compilation-process-setup-function 'git-grep-transient--mode-setup)
+    (setq-local compilation-process-setup-function #'git-grep-transient--mode-setup)
     (setq-local compilation-error-face git-grep-transient--hit-face)))
 
 (defun git-grep-transient--mode-setup ()
@@ -238,7 +238,7 @@ ARGS are arguments provided by `git-grep-transient'."
                                 (shell-quote-argument .expression)
                                 (when .revision (shell-quote-argument .revision)))
                           (if .filename (list "--" (shell-quote-argument .filename)))))
-             (buf (compilation-start (mapconcat 'identity cmd " ") 'git-grep-transient--mode)))
+             (buf (compilation-start (mapconcat #'identity cmd " ") #'git-grep-transient--mode)))
         (with-current-buffer buf
           (symbol-overlay-remove-all)
           (setq symbol-overlay-keywords-alist nil)
