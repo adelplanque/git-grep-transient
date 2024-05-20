@@ -86,14 +86,14 @@ Set up `compilation-exit-message-function'."
   "Wrap `compilation-find-file' to open file at a specific revision.
 ORIG-FUN MARKER FILENAME DIRECTORY FORMATS are then arguments of the
 `compilation-find-file' function."
-  (if (not (derived-mode-p 'git-grep-transient--mode))
-      (apply orig-fun marker filename directory formats)
-    (let ((parts (split-string filename ":")))
-      (let ((rev (car parts))
-            (filename (car (cdr parts))))
-        (if (not filename)
-            (apply orig-fun marker rev directory formats)
-          (magit-find-file rev filename))))))
+  (if (derived-mode-p 'git-grep-transient--mode)
+      (let* ((parts (split-string filename ":"))
+             (rev (car parts))
+             (filename (cadr parts)))
+        (if filename
+            (magit-find-file rev filename)
+          (apply orig-fun marker rev directory formats)))
+    (apply orig-fun marker filename directory formats)))
 
 (advice-add 'compilation-find-file :around #'git-grep-transient--compilation-find-file)
 
