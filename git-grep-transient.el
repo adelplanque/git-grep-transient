@@ -188,7 +188,7 @@ repository."
 
 (defun git-grep-transient--read-revision (&rest _args)
   "Ask user for a git revision."
-  (let ((pseudo-revs '("{worktree}" "{index}")))
+  (let ((pseudo-revs '("{cached}")))
     (magit-completing-read "Search in revision: "
                            (append pseudo-revs
                                    (magit-list-refnames nil t))
@@ -225,20 +225,24 @@ repository."
   :key "r"
   :variable 'revision
   :reader #'git-grep-transient--read-revision
-  :unset-value "worktree")
+  :unset-value "{worktree}")
 
 (defun git-grep-transient--run (&rest args)
   "Run.the git grep command.
 ARGS are arguments provided by `git-grep-transient'."
   (interactive (transient-args 'git-grep-transient))
   (let-alist args
-    (if (not .expression) (user-error "Nothing to search")
+    (when (not .expression) (user-error "Nothing to search"))
+    (message "eq index: %s" (eq .revision "{cached}"))
+    (let (cached revision)
+      (cond
+       ((string= .revision "{cached}") (setq cached "--cached"))
+       (.revision (setq revision (shell-quote-argument .revision))))
       (let* ((default-directory .directory)
-             (cmd (append (list "git" "--no-pager" "grep" "-n" "--column"
-                                (shell-quote-argument .expression)
-                                (when .revision (shell-quote-argument .revision)))
+             (cmd (append (list "git" "--no-pager" "grep" "-n" "--column" cached
+                                (shell-quote-argument .expression) revision)
                           (if .filename (list "--" (shell-quote-argument .filename)))))
-             (buf (compilation-start (mapconcat #'identity cmd " ") #'git-grep-transient--mode)))
+             (buf (compilation-start (string-join cmd " ") #'git-grep-transient--mode)))
         (with-current-buffer buf
           (symbol-overlay-remove-all)
           (setq symbol-overlay-keywords-alist nil)
