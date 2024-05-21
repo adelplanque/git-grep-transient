@@ -55,32 +55,6 @@
   '((python-mode . "*.py")
     (emacs-lisp-mode . "*.el")))
 
-(define-compilation-mode git-grep-transient--mode "Git-Grep"
-  "Compilation mode for Git-Grep search results."
-  (let ((smbl 'git-grep-transient)
-        (pttrn '("^\\(\\(?:[^:\n]+?:\\)?[^:\n]+?\\):\\([0-9]+\\):\\([0-9]+\\):"
-                 1 2 3)))
-    (setq-local truncate-lines t)
-    (setq-local compilation-disable-input t)
-    (setq-local compilation-error-regexp-alist (list smbl))
-    (setq-local compilation-error-regexp-alist-alist (list (cons smbl pttrn)))
-    (setq-local compilation-process-setup-function #'git-grep-transient--mode-setup)
-    (setq-local compilation-error-face git-grep-transient--hit-face)))
-
-(defun git-grep-transient--mode-setup ()
-  "Setup compilation variables and buffer for `git-grep-transient'.
-Set up `compilation-exit-message-function'."
-  (set (make-local-variable 'compilation-exit-message-function)
-       (lambda (status code msg)
-         (if (eq status 'exit)
-             (cond ((and (zerop code) (buffer-modified-p))
-                    '("finished (matches found)\n" . "matched"))
-                   ((not (buffer-modified-p))
-                    '("finished with no matches found\n" . "no match"))
-                   (t
-                    (cons msg code)))
-           (cons msg code)))))
-
 (defun git-grep-transient--compilation-find-file
     (orig-fun marker filename directory &rest formats)
   "Wrap `compilation-find-file' to open file at a specific revision.
@@ -95,7 +69,39 @@ ORIG-FUN MARKER FILENAME DIRECTORY FORMATS are then arguments of the
           (apply orig-fun marker rev directory formats)))
     (apply orig-fun marker filename directory formats)))
 
-(advice-add 'compilation-find-file :around #'git-grep-transient--compilation-find-file)
+(defun git-grep-transient--next-error-function (&rest args)
+  "Wraps `compilation-next-error-function' with ARGS to setup advice."
+  (advice-add 'compilation-find-file :around #'git-grep-transient--compilation-find-file)
+  (unwind-protect
+      (apply 'compilation-next-error-function args)
+    (advice-remove 'compilation-find-file #'git-grep-transient--compilation-find-file)))
+
+(define-compilation-mode git-grep-transient--mode "Git-Grep"
+  "Compilation mode for Git-Grep search results."
+  (let ((smbl 'git-grep-transient)
+        (pttrn '("^\\(\\(?:[^:\n]+?:\\)?[^:\n]+?\\):\\([0-9]+\\):\\([0-9]+\\):"
+                 1 2 3)))
+    (setq-local truncate-lines t)
+    (setq-local compilation-disable-input t)
+    (setq-local compilation-error-regexp-alist (list smbl))
+    (setq-local compilation-error-regexp-alist-alist (list (cons smbl pttrn)))
+    (setq-local compilation-process-setup-function #'git-grep-transient--mode-setup)
+    (setq-local compilation-error-face git-grep-transient--hit-face)
+    (setq-local next-error-function #'git-grep-transient--next-error-function)))
+
+(defun git-grep-transient--mode-setup ()
+  "Setup compilation variables and buffer for `git-grep-transient'.
+Set up `compilation-exit-message-function'."
+  (set (make-local-variable 'compilation-exit-message-function)
+       (lambda (status code msg)
+         (if (eq status 'exit)
+             (cond ((and (zerop code) (buffer-modified-p))
+                    '("finished (matches found)\n" . "matched"))
+                   ((not (buffer-modified-p))
+                    '("finished with no matches found\n" . "no match"))
+                   (t
+                    (cons msg code)))
+           (cons msg code)))))
 
 (defun git-grep-transient--default-for-read ()
   "Determine the default value of the expression to search for.
